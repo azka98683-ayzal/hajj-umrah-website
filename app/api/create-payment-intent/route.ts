@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 
 // Initialize Stripe with mock key if not available
 const stripe = process.env.STRIPE_SECRET_KEY 
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2025-02-24.acacia' })
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
   : null;
 
 export async function POST(req: Request) {
@@ -46,3 +46,4 @@ export async function POST(req: Request) {
     );
   }
 }
+
