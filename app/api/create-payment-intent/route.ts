@@ -1,32 +1,48 @@
-﻿import { NextResponse } from "next/server"
-import Stripe from "stripe"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
-import { prisma } from "@/lib/db"
+﻿import { NextResponse } from 'next/server';
+import Stripe from 'stripe';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!)
+// Initialize Stripe with mock key if not available
+const stripe = process.env.STRIPE_SECRET_KEY 
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2025-02-24.acacia' })
+  : null;
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  
-  const { bookingId } = await req.json()
-  const booking = await prisma.booking.findUnique({
-    where: { id: bookingId },
-    include: { package: true }
-  })
-  if (!booking) return NextResponse.json({ error: "Booking not found" }, { status: 404 })
-  
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: booking.package.price,
-    currency: "usd",
-    metadata: { bookingId, userId: session.user.id }
-  })
-  
-  await prisma.booking.update({
-    where: { id: bookingId },
-    data: { paymentIntentId: paymentIntent.id }
-  })
-  
-  return NextResponse.json({ clientSecret: paymentIntent.client_secret })
+  try {
+    const { amount, currency = 'usd', packageId } = await req.json();
+
+    if (!amount || amount <= 0) {
+      return NextResponse.json(
+        { error: 'Invalid amount' },
+        { status: 400 }
+      );
+    }
+
+    // If Stripe is not configured, return mock response
+    if (!stripe) {
+      return NextResponse.json({
+        clientSecret: 'mock_secret_' + Date.now(),
+        paymentIntentId: 'mock_pi_' + Date.now(),
+        mock: true,
+      });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100),
+      currency,
+      metadata: {
+        packageId: packageId || 'unknown',
+      },
+    });
+
+    return NextResponse.json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+    });
+  } catch (error: any) {
+    console.error('Error creating payment intent:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to create payment intent' },
+      { status: 500 }
+    );
+  }
 }
